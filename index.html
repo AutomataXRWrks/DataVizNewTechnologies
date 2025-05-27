@@ -1,17 +1,121 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Sunburst Visualization</title>
+  <meta charset="utf-8">
+  <title>Brand + Technology Sunburst</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; margin-top: 40px; }
+    svg { font: 12px sans-serif; }
+    .tooltip {
+      position: absolute;
+      text-align: center;
+      padding: 8px;
+      font: 12px sans-serif;
+      background: lightsteelblue;
+      border: 1px solid gray;
+      border-radius: 4px;
+      pointer-events: none;
+      opacity: 0;
+    }
+  </style>
 </head>
 <body>
-  <div id="sunburst"></div>
+  <h2>Brand → Technology → Types – Sunburst Diagram</h2>
+  <div id="chart"></div>
+  <div class="tooltip" id="tooltip"></div>
 
-  <!-- Load correct D3 version -->
-  <script src="https://d3js.org/d3.v6.min.js"></script>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script>
+d3.csv("data.csv").then(function(data) {
+    const tooltip = d3.select("#tooltip");
 
-  <!-- Your sunburst script -->
-  <script src="sunburst.js"></script>
+    function buildHierarchy(data) {
+        const root = { name: "root", children: [] };
+
+        data.forEach(row => {
+            const path = [
+                row.Brand,
+                row.TechnologyI,
+                row.TechnologyII,
+                row.TechnologyIII,
+                row.TechnologyIV,
+                row.TypeI,
+                row.TypeII
+            ].filter(Boolean);
+
+            let currentNode = root;
+            for (const name of path) {
+                let child = currentNode.children.find(c => c.name === name);
+                if (!child) {
+                    child = { name: name, children: [] };
+                    currentNode.children.push(child);
+                }
+                currentNode = child;
+            }
+            currentNode.value = (currentNode.value || 0) + 1;
+        });
+
+        return root;
+    }
+
+    const hierarchy = d3.hierarchy(buildHierarchy(data))
+                        .sum(d => d.value || 0)
+                        .sort((a, b) => b.value - a.value);
+
+    const width = 700;
+    const radius = width / 2;
+
+    const partition = d3.partition().size([2 * Math.PI, radius]);
+    const root = partition(hierarchy);
+
+    const arc = d3.arc()
+        .startAngle(d => d.x0)
+        .endAngle(d => d.x1)
+        .innerRadius(d => d.y0)
+        .outerRadius(d => d.y1);
+
+    const color = d3.scaleOrdinal(d3.schemeCategory10);
+
+    const svg = d3.select("#chart")
+        .append("svg")
+        .attr("width", width)
+        .attr("height", width)
+        .append("g")
+        .attr("transform", `translate(${width / 2},${width / 2})`);
+
+    // Draw arcs with unique IDs
+    svg.selectAll("path")
+        .data(root.descendants().filter(d => d.depth))
+        .enter()
+        .append("path")
+        .attr("id", (d, i) => "arc" + i)
+        .attr("d", arc)
+        .style("stroke", "#fff")
+        .style("fill", d => color((d.children ? d : d.parent).data.name))
+        .on("mouseover", function(event, d) {
+            const fullPath = d.ancestors().map(d => d.data.name).reverse().slice(1).join(" → ");
+            tooltip.transition().duration(200).style("opacity", 1);
+            tooltip.html(`<strong>${fullPath}</strong><br/>Projects: ${d.value}`)
+                   .style("left", (event.pageX + 10) + "px")
+                   .style("top", (event.pageY - 20) + "px");
+        })
+        .on("mouseout", function() {
+            tooltip.transition().duration(200).style("opacity", 0);
+        });
+
+    // Draw text along arc using <textPath>
+    svg.selectAll("text")
+        .data(root.descendants().filter(d => d.depth && (d.x1 - d.x0) > 0.02))
+        .enter()
+        .append("text")
+        .append("textPath")
+        .attr("startOffset", "50%")
+        .attr("text-anchor", "middle")
+        .attr("href", (d, i) => "#arc" + i)
+        .text(d => d.data.name)
+        .style("fill", "#000")
+        .style("font-size", "10px");
+});
+  </script>
 </body>
 </html>
