@@ -1,121 +1,224 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>Brand + Technology Sunburst</title>
+  <meta charset="UTF-8">
+  <title>Automata Studio - Projects Sankey Visualization</title>
+
+  <!-- Google Font: Roboto -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3-sankey@0.12.3/dist/d3-sankey.min.js"></script>
+
   <style>
-    body { font-family: sans-serif; text-align: center; margin-top: 40px; }
-    svg { font: 12px sans-serif; }
-    .tooltip {
-      position: absolute;
-      text-align: center;
-      padding: 8px;
-      font: 12px sans-serif;
-      background: lightsteelblue;
-      border: 1px solid gray;
-      border-radius: 4px;
-      pointer-events: none;
-      opacity: 0;
+    body {
+      font-family: "Roboto", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 0;
     }
+    svg {
+      font-family: "Roboto", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 12px;
+      border: 1px solid #ddd;
+      cursor: move; /* hint that you can drag */
+    }
+    .node rect {
+      fill-opacity: 0.9;
+      shape-rendering: crispEdges;
+    }
+    .node text {
+      pointer-events: none;
+      font-size: 12px;
+    }
+    .link {
+      fill: none;
+      stroke-opacity: 0.4;
+    }
+    .link:hover {
+      stroke-opacity: 0.7;
+    }
+    h2 {
+      font-family: "Roboto", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-weight: 500;
+      text-align: center;
+      margin: 16px 0;
+    }
+
+    .logo {
+      display: block;
+      margin: 10px auto 5px auto;
+      width: 280px;      /* adjust size */
+      height: auto;
+    }
+
   </style>
 </head>
 <body>
-  <h2>Brand → Technology → Types – Sunburst Diagram</h2>
-  <div id="chart"></div>
-  <div class="tooltip" id="tooltip"></div>
+<img src="logo.png" alt="Logo" class="logo">
+  <h2>Projects Data Visualization</h2>
+  <svg width="2130" height="1000"></svg>
 
-  <script src="https://d3js.org/d3.v7.min.js"></script>
   <script>
-d3.csv("data.csv").then(function(data) {
-    const tooltip = d3.select("#tooltip");
+    const svg = d3.select("svg"),
+          width = +svg.attr("width"),
+          height = +svg.attr("height");
 
-    function buildHierarchy(data) {
-        const root = { name: "root", children: [] };
+    const topMargin = 80; // space reserved for column headers
 
-        data.forEach(row => {
-            const path = [
-                row.Brand,
-                row.TechnologyI,
-                row.TechnologyII,
-                row.TechnologyIII,
-                row.TechnologyIV,
-                row.TypeI,
-                row.TypeII
-            ].filter(Boolean);
-
-            let currentNode = root;
-            for (const name of path) {
-                let child = currentNode.children.find(c => c.name === name);
-                if (!child) {
-                    child = { name: name, children: [] };
-                    currentNode.children.push(child);
-                }
-                currentNode = child;
-            }
-            currentNode.value = (currentNode.value || 0) + 1;
-        });
-
-        return root;
-    }
-
-    const hierarchy = d3.hierarchy(buildHierarchy(data))
-                        .sum(d => d.value || 0)
-                        .sort((a, b) => b.value - a.value);
-
-    const width = 700;
-    const radius = width / 2;
-
-    const partition = d3.partition().size([2 * Math.PI, radius]);
-    const root = partition(hierarchy);
-
-    const arc = d3.arc()
-        .startAngle(d => d.x0)
-        .endAngle(d => d.x1)
-        .innerRadius(d => d.y0)
-        .outerRadius(d => d.y1);
+    const sankey = d3.sankey()
+      .nodeWidth(70)
+      .nodePadding(10)
+      .extent([[1, topMargin], [width - 1, height - 6]]); // start below headers
 
     const color = d3.scaleOrdinal(d3.schemeCategory10);
 
-    const svg = d3.select("#chart")
-        .append("svg")
-        .attr("width", width)
-        .attr("height", width)
-        .append("g")
-        .attr("transform", `translate(${width / 2},${width / 2})`);
+    function normalize(str) {
+      return str ? str.trim() : "";
+    }
 
-    // Draw arcs with unique IDs
-    svg.selectAll("path")
-        .data(root.descendants().filter(d => d.depth))
-        .enter()
-        .append("path")
-        .attr("id", (d, i) => "arc" + i)
-        .attr("d", arc)
-        .style("stroke", "#fff")
-        .style("fill", d => color((d.children ? d : d.parent).data.name))
-        .on("mouseover", function(event, d) {
-            const fullPath = d.ancestors().map(d => d.data.name).reverse().slice(1).join(" → ");
-            tooltip.transition().duration(200).style("opacity", 1);
-            tooltip.html(`<strong>${fullPath}</strong><br/>Projects: ${d.value}`)
-                   .style("left", (event.pageX + 10) + "px")
-                   .style("top", (event.pageY - 20) + "px");
-        })
-        .on("mouseout", function() {
-            tooltip.transition().duration(200).style("opacity", 0);
-        });
+    // Group that will be zoomed/panned
+    const chart = svg.append("g")
+      .attr("class", "chart");
 
-    // Draw text along arc using <textPath>
-    svg.selectAll("text")
-        .data(root.descendants().filter(d => d.depth && (d.x1 - d.x0) > 0.02))
-        .enter()
-        .append("text")
-        .append("textPath")
-        .attr("startOffset", "50%")
+    // Zoom behavior
+    const zoom = d3.zoom()
+      .scaleExtent([0.5, 3])        // min/max zoom
+      .on("zoom", (event) => {
+        chart.attr("transform", event.transform);
+      });
+
+    svg.call(zoom);
+
+    d3.csv("data.csv").then(function(data) {
+      const nodeMap = new Map();
+      const links = [];
+
+      function getNode(name) {
+        if (!nodeMap.has(name)) {
+          nodeMap.set(name, { name });
+        }
+        return nodeMap.get(name);
+      }
+
+      data.forEach(row => {
+        const path = [
+          { key: normalize(row.Brand),        label: "Brand" },
+          { key: normalize(row.TechnologyI),  label: "TechnologyI" },
+          { key: normalize(row.TechnologyII), label: "TechnologyII" },
+          { key: normalize(row.TechnologyIII),label: "TechnologyIII" },
+          { key: normalize(row.TechnologyIV), label: "TechnologyIV" },
+          { key: normalize(row.TypeI),        label: "TypeI" },
+          { key: normalize(row.TypeII),       label: "TypeII" },
+          { key: normalize(row.Company),      label: "Company" }
+        ].filter(d => d.key !== "");
+
+        for (let i = 0; i < path.length - 1; i++) {
+          const sourceId = `${path[i].key} (${path[i].label})`;
+          const targetId = `${path[i + 1].key} (${path[i + 1].label})`;
+
+          const source = getNode(sourceId);
+          const target = getNode(targetId);
+
+          const existing = links.find(l => l.source === source && l.target === target);
+          if (existing) {
+            existing.value += 1;
+          } else {
+            links.push({ source, target, value: 1 });
+          }
+        }
+      });
+
+      const graph = {
+        nodes: Array.from(nodeMap.values()),
+        links
+      };
+
+      sankey(graph);
+
+      // COLUMN HEADERS WITH FORCED ORDER, NO OVERLAP
+      const columns = {};
+      graph.nodes.forEach(d => {
+        const match = d.name.match(/\(([^)]+)\)$/); // text inside last parentheses
+        const colLabel = match ? match[1] : "Unknown";
+        const xCenter = (d.x0 + d.x1) / 2;
+
+        if (!columns[colLabel]) {
+          columns[colLabel] = [];
+        }
+        columns[colLabel].push(xCenter);
+      });
+
+      const columnOrder = [
+        "Brand",
+        "TechnologyI",
+        "TechnologyII",
+        "TechnologyIII",
+        "TechnologyIV",
+        "TypeI",
+        "TypeII",
+        "Company"
+      ];
+
+      const presentLabels = columnOrder.filter(label => columns[label]);
+
+      const availableXs = presentLabels
+        .map(label => d3.mean(columns[label]))
+        .sort((a, b) => a - b);
+
+      const columnArray = presentLabels.map((label, i) => ({
+        label,
+        x: availableXs[i]
+      }));
+
+      // Add headers *inside* chart so they zoom/pan too
+      chart.append("g")
+        .attr("class", "column-labels")
+        .selectAll("text")
+        .data(columnArray)
+        .join("text")
+        .attr("x", d => d.x)
+        .attr("y", topMargin / 2)
         .attr("text-anchor", "middle")
-        .attr("href", (d, i) => "#arc" + i)
-        .text(d => d.data.name)
-        .style("fill", "#000")
-        .style("font-size", "10px");
-});
+        .style("font-weight", "700")
+        .style("font-size", "14px")
+        .text(d => d.label);
+
+      // LINKS
+      chart.append("g")
+        .selectAll("path")
+        .data(graph.links)
+        .join("path")
+        .attr("class", "link")
+        .attr("d", d3.sankeyLinkHorizontal())
+        .attr("stroke", d => color(d.source.name))
+        .attr("stroke-width", d => Math.max(1, d.width));
+
+      // NODES
+      const node = chart.append("g")
+        .selectAll("g")
+        .data(graph.nodes)
+        .join("g")
+        .attr("class", "node");
+
+      node.append("rect")
+        .attr("x", d => d.x0)
+        .attr("y", d => d.y0)
+        .attr("height", d => d.y1 - d.y0)
+        .attr("width", d => d.x1 - d.x0)
+        .attr("fill", d => color(d.name));
+
+      node.append("text")
+        .attr("x", d => d.x0 - 6)
+        .attr("y", d => (d.y1 + d.y0) / 2)
+        .attr("dy", "0.35em")
+        .attr("text-anchor", "end")
+        .text(d => d.name.replace(/\s*\(.*\)$/, ""))
+        .filter(d => d.x0 < width / 2)
+        .attr("x", d => d.x1 + 6)
+        .attr("text-anchor", "start");
+    });
   </script>
 </body>
 </html>
